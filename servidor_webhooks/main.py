@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 import json
 import os
+import base64
 
 app = FastAPI()
 
@@ -57,7 +58,16 @@ async def telnyx_webhook(request: Request, token: str = None):
         if event_type == "call.answered":
             call_id = data["data"]["payload"]["call_control_id"]
 
-            mensaje = "Prueba exitosa. Ya funciona el TTS dinámico desde Telnyx."
+            encoded = data["data"]["payload"].get("client_state")
+
+            mensaje = "Mensaje por defecto"
+            if encoded:
+                try:
+                    mensaje = base64.b64decode(encoded).decode("utf-8")
+                except Exception as e:
+                    print("Error decodificando client_state:", e)
+
+
 
             import requests
 
