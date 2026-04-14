@@ -2,6 +2,8 @@ from fastapi import FastAPI, Request, HTTPException
 import json
 import os
 import base64
+import requests
+
 
 app = FastAPI()
 
@@ -51,47 +53,36 @@ async def telnyx_webhook(request: Request, token: str = None):
     print("📞 Telnyx webhook recibido:")
     print(json.dumps(data, indent=4))
 
-    try:
-        event_type = data["data"]["event_type"]
-        print("👉 EVENT TYPE:", event_type)
+    event_type = data["data"]["event_type"]
 
-        if event_type == "call.answered":
-            call_id = data["data"]["payload"]["call_control_id"]
+    if event_type == "call.answered":
+        call_id = data["data"]["payload"]["call_control_id"]
 
-            encoded = data["data"]["payload"].get("client_state")
+        # 🔥 DECODIFICAR EL MENSAJE
+        client_state_b64 = data["data"]["payload"].get("client_state", "")
+        
+        try:
+            mensaje = base64.b64decode(client_state_b64).decode()
+        except:
+            mensaje = "Error al decodificar mensaje"
 
-            mensaje = "Mensaje por defecto"
-            if encoded:
-                try:
-                    mensaje = base64.b64decode(encoded).decode("utf-8")
-                except Exception as e:
-                    print("Error decodificando client_state:", e)
+        print(f"🗣️ Mensaje a reproducir: {mensaje}")
 
-
-
-            import requests
-
-            url = f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak"
-
-            payload = {
+        # 🔥 HACER QUE HABLE
+        requests.post(
+            f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak",
+            json={
                 "payload": mensaje,
                 "voice": "female",
                 "language": "es-MX"
-            }
-
-            headers = {
+            },
+            headers={
                 "Authorization": f"Bearer {os.environ.get('TELNYX_API_KEY')}",
                 "Content-Type": "application/json"
             }
+        )
 
-            r = requests.post(url, json=payload, headers=headers)
-
-            print("🗣️ Respuesta speak:", r.status_code, r.text)
-
-    except Exception as e:
-        print("❌ Error:", e)
-
-    return {"received": True}
+    return {"status": "ok"}
 
 
 # ----------------------------------------
