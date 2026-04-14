@@ -50,6 +50,37 @@ async def telnyx_webhook(request: Request, token: str = None):
     print("📞 Telnyx webhook recibido:")
     print(json.dumps(data, indent=4))
 
+    try:
+        event_type = data["data"]["event_type"]
+        print("👉 EVENT TYPE:", event_type)
+
+        if event_type == "call.answered":
+            call_id = data["data"]["payload"]["call_control_id"]
+
+            mensaje = "Prueba exitosa. Ya funciona el TTS dinámico desde Telnyx."
+
+            import requests
+
+            url = f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak"
+
+            payload = {
+                "payload": mensaje,
+                "voice": "female",
+                "language": "es-MX"
+            }
+
+            headers = {
+                "Authorization": f"Bearer {os.environ.get('TELNYX_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+
+            r = requests.post(url, json=payload, headers=headers)
+
+            print("🗣️ Respuesta speak:", r.status_code, r.text)
+
+    except Exception as e:
+        print("❌ Error:", e)
+
     return {"received": True}
 
 
