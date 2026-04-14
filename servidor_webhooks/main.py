@@ -74,7 +74,8 @@ async def telnyx_webhook(request: Request, token: str = None):
             json={
                 "payload": mensaje,
                 "voice": "female",
-                "language": "es-MX"
+                "language": "es-MX",
+                "command_id": "speak-1"
             },
             headers={
                 "Authorization": f"Bearer {os.environ.get('TELNYX_API_KEY')}",
