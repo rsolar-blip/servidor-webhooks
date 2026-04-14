@@ -58,7 +58,6 @@ async def telnyx_webhook(request: Request, token: str = None):
     if event_type == "call.answered":
         call_id = data["data"]["payload"]["call_control_id"]
 
-        # 🔥 DECODIFICAR MENSAJE
         client_state_b64 = data["data"]["payload"].get("client_state", "")
         mensaje = base64.b64decode(client_state_b64).decode()
 
@@ -69,29 +68,30 @@ async def telnyx_webhook(request: Request, token: str = None):
             "Content-Type": "application/json"
         }
 
-        # 🔥 1. ASEGURAR QUE LA LLAMADA ESTÉ CONTESTADA
-        requests.post(
+        # 🔥 1. ANSWER (aunque ya venga answered, lo reforzamos)
+        r1 = requests.post(
             f"https://api.telnyx.com/v2/calls/{call_id}/actions/answer",
             headers=headers
         )
+        print("ANSWER STATUS:", r1.status_code, r1.text)
 
-        # 🔥 2. PEQUEÑA PAUSA (CLAVE)
+        # 🔥 2. ESPERA MÁS TIEMPO (CLAVE)
         import time
-        time.sleep(1)
+        time.sleep(2)
 
-        # 🔥 3. AHORA SÍ HABLA
-        requests.post(
+        # 🔥 3. SPEAK
+        r2 = requests.post(
             f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak",
             json={
                 "payload": mensaje,
                 "voice": "Polly.Conchita",
-                "language": "es-MX",
-                "command_id": "speak-1"
+                "language": "es-MX"
             },
             headers=headers
         )
 
-    return {"status": "ok"}
+        print("SPEAK STATUS:", r2.status_code)
+        print("SPEAK RESPONSE:", r2.text)
 
 
 # ----------------------------------------
