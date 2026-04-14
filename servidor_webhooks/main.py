@@ -58,29 +58,37 @@ async def telnyx_webhook(request: Request, token: str = None):
     if event_type == "call.answered":
         call_id = data["data"]["payload"]["call_control_id"]
 
-        # 🔥 DECODIFICAR EL MENSAJE
+        # 🔥 DECODIFICAR MENSAJE
         client_state_b64 = data["data"]["payload"].get("client_state", "")
-        
-        try:
-            mensaje = base64.b64decode(client_state_b64).decode()
-        except:
-            mensaje = "Error al decodificar mensaje"
+        mensaje = base64.b64decode(client_state_b64).decode()
 
         print(f"🗣️ Mensaje a reproducir: {mensaje}")
 
-        # 🔥 HACER QUE HABLE
+        headers = {
+            "Authorization": f"Bearer {os.environ.get('TELNYX_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+
+        # 🔥 1. ASEGURAR QUE LA LLAMADA ESTÉ CONTESTADA
+        requests.post(
+            f"https://api.telnyx.com/v2/calls/{call_id}/actions/answer",
+            headers=headers
+        )
+
+        # 🔥 2. PEQUEÑA PAUSA (CLAVE)
+        import time
+        time.sleep(1)
+
+        # 🔥 3. AHORA SÍ HABLA
         requests.post(
             f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak",
             json={
                 "payload": mensaje,
-                "voice": "female",
+                "voice": "Polly.Conchita",
                 "language": "es-MX",
                 "command_id": "speak-1"
             },
-            headers={
-                "Authorization": f"Bearer {os.environ.get('TELNYX_API_KEY')}",
-                "Content-Type": "application/json"
-            }
+            headers=headers
         )
 
     return {"status": "ok"}
