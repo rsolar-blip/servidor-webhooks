@@ -51,15 +51,23 @@ async def telnyx_webhook(request: Request, token: str = None):
 
     data = await request.json()
     print("📞 Telnyx webhook recibido:")
-    print(json.dumps(data, indent=4))
+    # print(json.dumps(data, indent=4)) # Puedes comentar esto para limpiar logs
 
     event_type = data["data"]["event_type"]
 
     if event_type == "call.answered":
-        call_id = data["data"]["payload"]["call_control_id"]
-
-        client_state_b64 = data["data"]["payload"].get("client_state", "")
-        mensaje = base64.b64decode(client_state_b64).decode()
+        # Extraemos datos necesarios
+        payload = data["data"]["payload"]
+        call_id = payload["call_control_id"]
+        client_state_b64 = payload.get("client_state", "")
+        
+        # 1. Decodificación limpia (UTF-8)
+        try:
+            mensaje_raw = base64.b64decode(client_state_b64).decode('utf-8')
+            # Limpiamos caracteres que rompen el ritmo del audio
+            mensaje = mensaje_raw.replace("|", ". ").replace("[", "").replace("]", ". ")
+        except:
+            mensaje = "Alerta de monitoreo."
 
         print(f"🗣️ Mensaje a reproducir: {mensaje}")
 
@@ -68,30 +76,27 @@ async def telnyx_webhook(request: Request, token: str = None):
             "Content-Type": "application/json"
         }
 
-        # 🔥 1. ANSWER (aunque ya venga answered, lo reforzamos)
-        r1 = requests.post(
-            f"https://api.telnyx.com/v2/calls/{call_id}/actions/answer",
-            headers=headers
-        )
-        print("ANSWER STATUS:", r1.status_code, r1.text)
+        # 2. PAUSA ASÍNCRONA (Clave para evitar el silencio inicial)
+        import asyncio
+        await asyncio.sleep(1.0) 
 
-        # 🔥 2. ESPERA MÁS TIEMPO (CLAVE)
-        import time
-        time.sleep(2)
-
-        # 🔥 3. SPEAK
+        # 3. COMANDO SPEAK (Sin pasar por 'answer')
+        # Agregamos comas iniciales para dar tiempo al usuario de escuchar
         r2 = requests.post(
             f"https://api.telnyx.com/v2/calls/{call_id}/actions/speak",
             json={
-                "payload": mensaje,
-                "voice": "Polly.Conchita",
-                "language": "es-MX"
+                "payload": f", , , Atención. . . {mensaje}",
+                "voice": "female",
+                "language": "es-MX",
+                "voice_engine": "google" # Más rápido que Polly para alertas
             },
             headers=headers
         )
 
         print("SPEAK STATUS:", r2.status_code)
         print("SPEAK RESPONSE:", r2.text)
+
+    return {"status": "success"}
 
 
 # ----------------------------------------
