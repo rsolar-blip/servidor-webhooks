@@ -102,12 +102,71 @@ async def telnyx_webhook(request: Request, token: str = None):
 # ----------------------------------------
 # Webhook Commvault
 # ----------------------------------------
+# ----------------------------------------
+# Webhook Commvault
+# ----------------------------------------
 @app.post("/commvault/webhook")
 async def commvault_webhook(request: Request, token: str = None):
+    # 1. Validamos seguridad con el token que ya tienes configurado
     validate_token(token)
 
-    data = await request.json()
-    print("💾 Commvault webhook recibido:")
-    print(json.dumps(data, indent=4))
+    try:
+        # 2. Recibimos los datos de la consola
+        data = await request.json()
+        print("💾 Commvault webhook recibido:")
+        # print(json.dumps(data, indent=4)) # Úsalo para debug si necesitas ver más campos
 
-    return {"status": "success"}
+        # 3. Extracción de datos clave (usando .get para evitar errores si falta un campo)
+        # Commvault envía estos tokens si los activas en la configuración de la Alerta
+        client_name = data.get("clientName", "Servidor no identificado")
+        status      = data.get("status", "Estado desconocido")
+        job_id      = data.get("jobId", "N/A")
+        error_info  = data.get("error", "Sin detalle técnico")
+        commcell    = data.get("commCellName", "Consola Desconocida")
+        
+        # 4. Lógica de alertas visuales (Emojis)
+        # Esto ayuda a los administradores a identificar la gravedad de un vistazo
+        if "Fail" in status or "Error" in status:
+            emoji = "🔴"
+            prioridad = "ALTA"
+        elif "Warning" in status:
+            emoji = "🟡"
+            prioridad = "MEDIA"
+        else:
+            emoji = "✅"
+            prioridad = "BAJA"
+
+        # 5. Construcción del mensaje para Telegram
+        # Usamos Markdown para que el nombre del servidor resalte
+        mensaje_telegram = (
+            f"{emoji} *ALERTA DE RESPALDO*\n\n"
+            f"🏢 *Consola:* {commcell}\n"
+            f"🖥️ *Servidor:* `{client_name}`\n"
+            f"📊 *Estado:* {status}\n"
+            f"🆔 *Job ID:* {job_id}\n"
+            f"⚠️ *Prioridad:* {prioridad}\n"
+            f"📝 *Detalle:* {error_info}\n\n"
+            f"🤖 _Enviado desde Middleware Render_"
+        )
+
+        # 6. Envío a Telegram (Usando tus variables de entorno)
+        TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+        TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+        url_tg = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": mensaje_telegram,
+            "parse_mode": "Markdown"
+        }
+
+        response = requests.post(url_tg, json=payload)
+        
+        if response.status_code != 200:
+            print(f"❌ Error en Telegram API: {response.text}")
+
+    except Exception as e:
+        print(f"❌ Error procesando el webhook de Commvault: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+    return {"status": "success", "client": client_name}
