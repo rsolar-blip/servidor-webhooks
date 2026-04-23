@@ -105,8 +105,11 @@ async def telnyx_webhook(request: Request, token: str = None):
 # Webhook Commvault
 # ----------------------------------------
 @app.post("/commvault/webhook")
-async def commvault_webhook(request: Request, token: str = None):
-    # 1. Validamos seguridad con el token que ya tienes configurado
+async def commvault_webhook(
+    request: Request, 
+    token: str = Header(None) # <--- CAMBIO AQUÍ: Ahora lee el header 'token'
+):
+    # El resto de tu función validate_token(token) se queda igualita.
     validate_token(token)
 
     try:
