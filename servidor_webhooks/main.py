@@ -3,7 +3,7 @@ import json
 import os
 import base64
 import requests
-from fastapi import Header
+from fastapi import FastAPI, Request, HTTPException, Header # <--- Aquí debe estar Header
 app = FastAPI()
 
 # ----------------------------------------
@@ -105,10 +105,7 @@ async def telnyx_webhook(request: Request, token: str = None):
 # Webhook Commvault
 # ----------------------------------------
 @app.post("/commvault/webhook")
-async def commvault_webhook(
-    request: Request, 
-    token: str = Header(None) # <--- CAMBIO AQUÍ: Ahora lee el header 'token'
-):
+async def commvault_webhook(request: Request, token: str = Header(None)):
     # El resto de tu función validate_token(token) se queda igualita.
     validate_token(token)
 
