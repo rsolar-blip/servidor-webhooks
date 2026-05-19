@@ -76,36 +76,30 @@ def home():
 # WEBHOOK NUEVO: Twilio Confirmación de Llamadas
 # ----------------------------------------
 @app.post("/twilio/webhook")
-async def twilio_webhook(request: Request, token: str = None):
-    validate_token(token)
-    
+async def twilio_webhook(request: Request):
+
+    print("=== TWILIO WEBHOOK ACTIVADO ===")
+
     form_data = await request.form()
-    params = request.query_params
-    hash_id = params.get("hash_id")
+
+    print("FORM:", form_data)
+
     digit_pressed = form_data.get("Digits")
-    
-    print(f"☎️ Webhook Twilio: Hash={hash_id} | Dígito Presionado={digit_pressed}")
-    
-    if digit_pressed == "1":
-        if hash_id:
-            # Ejecutamos la actualización de Google Sheets de manera asíncrona en segundo plano
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, actualizar_estado_en_sheets, hash_id, "CONFIRMADO")
-            
-        twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-            <Say voice="Polly.Mia" language="es-MX">Alerta confirmada correctamente. Muchas gracias. Adiós.</Say>
-            <Hangup/>
-        </Response>"""
-    else:
-        twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-            <Say voice="Polly.Mia" language="es-MX">Opción no válida o tiempo agotado. Escalando alerta.</Say>
-            <Hangup/>
-        </Response>"""
-        
-    
-    return Response(content=twiml_response, media_type="application/xml")
+
+    print("DIGITO:", digit_pressed)
+
+    twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+        <Say voice="Polly.Mia" language="es-MX">
+            Confirmación recibida correctamente.
+        </Say>
+        <Hangup/>
+    </Response>"""
+
+    return Response(
+        content=twiml_response,
+        media_type="application/xml"
+    )
 
 # ----------------------------------------
 # Webhook Telegram
