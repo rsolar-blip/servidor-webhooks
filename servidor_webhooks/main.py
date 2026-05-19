@@ -76,31 +76,27 @@ def home():
 # WEBHOOK NUEVO: Twilio Confirmación de Llamadas
 # ----------------------------------------
 @app.post("/twilio/webhook")
-async def twilio_webhook(request: Request):
+async def twilio_webhook(request: Request, token: str = None):
 
-    print("=== TWILIO WEBHOOK ACTIVADO ===")
+    print("=== TWILIO WEBHOOK ===")
 
     form_data = await request.form()
-
-    print("FORM:", form_data)
 
     digit_pressed = form_data.get("Digits")
 
     print("DIGITO:", digit_pressed)
 
-    twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-        <Say voice="Polly.Mia" language="es-MX">
-            Confirmación recibida correctamente.
-        </Say>
-        <Hangup/>
-    </Response>"""
-
     return Response(
-        content=twiml_response,
+        content="""
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Mia" language="es-MX">
+        Confirmación recibida.
+    </Say>
+</Response>
+""",
         media_type="application/xml"
     )
-
 # ----------------------------------------
 # Webhook Telegram
 # ----------------------------------------
