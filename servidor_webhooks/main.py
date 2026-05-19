@@ -9,92 +9,137 @@ from oauth2client.service_account import ServiceAccountCredentials
 app = FastAPI()
 
 # ----------------------------------------
-# Seguridad: Token desde variables de entorno
+# Seguridad
 # ----------------------------------------
-SECRET_TOKEN = os.environ.get("WEBHOOK_TOKEN", "12345")
+SECRET_TOKEN = os.environ.get("WEBHOOK_TOKEN")
 
 def validate_token(token: str):
-    """Valida el token recibido como query param."""
     if token is None:
         raise HTTPException(status_code=400, detail="Token requerido")
+
     if token != SECRET_TOKEN:
         raise HTTPException(status_code=403, detail="Token inválido")
 
-# --- CONFIGURACIÓN DE GOOGLE SHEETS DESDE ENTORNO ---
-# TIP: Para no subir el archivo JSON físico a Render por seguridad, 
-# puedes guardar la ruta en una variable de entorno de Render, o leer el JSON directo de una variable.
-CREDENTIALS_FILE = os.environ.get("GOOGLE_SHEETS_JSON_PATH", r"D:\Python\JS\twilio-guardias-3cb6ae8b259c.json")
+# ----------------------------------------
+# Google Sheets
+# ----------------------------------------
 NOMBRE_HOJA_CALCULO = "guardias"
 PESTANA_CONTROL = "control_alertas"
 
-def validate_token(token: str):
-    """Valida el token recibido como query param."""
-    if token is None:
-        raise HTTPException(status_code=400, detail="Token requerido")
-    if token != SECRET_TOKEN:
-        raise HTTPException(status_code=403, detail="Token inválido")
-
 def actualizar_estado_en_sheets(hash_id: str, nuevo_estado: str):
-    """Lee el JSON desde las variables de entorno y actualiza la hoja de cálculo."""
     try:
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        
-        # 1. Recuperamos el texto completo del JSON desde la variable de entorno de Render
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
+
         json_texto = os.environ.get("GOOGLE_SHEETS_JSON_DATA")
-        
+
         if not json_texto:
-            print("❌ [Sheets Error] La variable GOOGLE_SHEETS_JSON_DATA está vacía.")
+            print("❌ GOOGLE_SHEETS_JSON_DATA vacía")
             return False
-            
-        # 2. Convertimos el texto string a un diccionario de Python
+
         info_credenciales = json.loads(json_texto)
-        
-        # 3. Nos autenticamos usando el diccionario cargado en memoria (from_json_keyfile_dict)
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(info_credenciales, scope)
+
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(
+            info_credenciales,
+            scope
+        )
+
         client = gspread.authorize(creds)
+
         hoja = client.open(NOMBRE_HOJA_CALCULO).worksheet(PESTANA_CONTROL)
-        
-        # 4. Buscamos el hash_id en la columna A y actualizamos la columna B
+
         celda = hoja.find(hash_id)
+
         if celda:
             hoja.update_cell(celda.row, 2, nuevo_estado)
-            print(f"🟩 [Sheets] Alerta {hash_id} actualizada a {nuevo_estado} con éxito.")
+
+            print(f"✅ Sheets actualizado: {hash_id}")
+
             return True
-        else:
-            print(f"🟨 [Sheets] No se encontró el hash_id {hash_id} en la hoja.")
+
+        print(f"⚠️ Hash no encontrado: {hash_id}")
+
     except Exception as e:
-        print(f"❌ [Sheets Error] No se pudo actualizar el estado: {e}")
+        print(f"❌ Error Sheets: {e}")
+
     return False
+
 # ----------------------------------------
 # Ruta raíz
 # ----------------------------------------
 @app.get("/")
 def home():
-    return {"status": "online", "message": "Servidor funcionando correctamente"}
+    return {
+        "status": "online"
+    }
 
 # ----------------------------------------
-# WEBHOOK NUEVO: Twilio Confirmación de Llamadas
+# TEST GET TWILIO
+# ----------------------------------------
+@app.get("/twilio/webhook")
+async def test_twilio():
+    return {"status": "ok"}
+
+# ----------------------------------------
+# WEBHOOK TWILIO
 # ----------------------------------------
 @app.post("/twilio/webhook")
 async def twilio_webhook(request: Request, token: str = None):
 
-    print("=== TWILIO WEBHOOK ===")
+    print("📞 TWILIO WEBHOOK ACTIVADO")
+
+    validate_token(token)
 
     form_data = await request.form()
 
+    print("FORM DATA:", dict(form_data))
+
+    params = request.query_params
+
+    hash_id = params.get("hash_id")
+
     digit_pressed = form_data.get("Digits")
 
-    print("DIGITO:", digit_pressed)
+    print(f"Hash: {hash_id}")
+    print(f"Dígito: {digit_pressed}")
 
-    return Response(
-        content="""
-<?xml version="1.0" encoding="UTF-8"?>
+    if digit_pressed == "1":
+
+        if hash_id:
+
+            loop = asyncio.get_event_loop()
+
+            await loop.run_in_executor(
+                None,
+                actualizar_estado_en_sheets,
+                hash_id,
+                "CONFIRMADO"
+            )
+
+        twiml_response = """
 <Response>
     <Say voice="Polly.Mia" language="es-MX">
-        Confirmación recibida.
+        Alerta confirmada correctamente.
     </Say>
+    <Hangup/>
 </Response>
-""",
+"""
+
+    else:
+
+        twiml_response = """
+<Response>
+    <Say voice="Polly.Mia" language="es-MX">
+        No se recibió confirmación.
+    </Say>
+    <Hangup/>
+</Response>
+"""
+
+    return Response(
+        content=twiml_response,
         media_type="application/xml"
     )
 # ----------------------------------------
