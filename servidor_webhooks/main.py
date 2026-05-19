@@ -1,10 +1,10 @@
+from fastapi import FastAPI, Request, HTTPException, Header, Response  # <-- Asegúrate de que "Response" esté aquí
 import os
 import json
 import base64
 import asyncio
 import requests
 import gspread
-from fastapi import FastAPI, Request, HTTPException, Header
 from oauth2client.service_account import ServiceAccountCredentials
 app = FastAPI()
 
@@ -104,7 +104,7 @@ async def twilio_webhook(request: Request, token: str = None):
             <Hangup/>
         </Response>"""
         
-    from fastapi.responses import Response
+    
     return Response(content=twiml_response, media_type="application/xml")
 
 # ----------------------------------------
