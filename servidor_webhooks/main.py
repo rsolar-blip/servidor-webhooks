@@ -35,17 +35,28 @@ def validate_token(token: str):
         raise HTTPException(status_code=403, detail="Token inválido")
 
 def actualizar_estado_en_sheets(hash_id: str, nuevo_estado: str):
-    """Busca el hash_id en la pestaña control_alertas y actualiza su estado."""
+    """Lee el JSON desde las variables de entorno y actualiza la hoja de cálculo."""
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+        
+        # 1. Recuperamos el texto completo del JSON desde la variable de entorno de Render
+        json_texto = os.environ.get("GOOGLE_SHEETS_JSON_DATA")
+        
+        if not json_texto:
+            print("❌ [Sheets Error] La variable GOOGLE_SHEETS_JSON_DATA está vacía.")
+            return False
+            
+        # 2. Convertimos el texto string a un diccionario de Python
+        info_credenciales = json.loads(json_texto)
+        
+        # 3. Nos autenticamos usando el diccionario cargado en memoria (from_json_keyfile_dict)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(info_credenciales, scope)
         client = gspread.authorize(creds)
         hoja = client.open(NOMBRE_HOJA_CALCULO).worksheet(PESTANA_CONTROL)
         
-        # Buscar el hash_id en la columna A
+        # 4. Buscamos el hash_id en la columna A y actualizamos la columna B
         celda = hoja.find(hash_id)
         if celda:
-            # Columna B es el 'estado', está en la columna 2 de la misma fila
             hoja.update_cell(celda.row, 2, nuevo_estado)
             print(f"🟩 [Sheets] Alerta {hash_id} actualizada a {nuevo_estado} con éxito.")
             return True
@@ -66,25 +77,18 @@ def home():
 # ----------------------------------------
 @app.post("/twilio/webhook")
 async def twilio_webhook(request: Request, token: str = None):
-    # Validamos que la petición traiga el token correcto por seguridad
     validate_token(token)
     
-    # Twilio envía los datos como x-www-form-urlencoded
     form_data = await request.form()
-    
-    # Twilio nos enviará los parámetros GET que le peguemos a la URL (ej: ?hash_id=xxxx)
     params = request.query_params
     hash_id = params.get("hash_id")
-    
-    # Capturamos qué dígito presionó el usuario en su teléfono
     digit_pressed = form_data.get("Digits")
     
     print(f"☎️ Webhook Twilio: Hash={hash_id} | Dígito Presionado={digit_pressed}")
     
-    # Generamos la respuesta XML (TwiML) usando strings limpios para evitar dependencias extra
     if digit_pressed == "1":
         if hash_id:
-            # Ejecutamos la actualización de Google Sheets en un hilo para no bloquear el async
+            # Ejecutamos la actualización de Google Sheets de manera asíncrona en segundo plano
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, actualizar_estado_en_sheets, hash_id, "CONFIRMADO")
             
@@ -100,7 +104,6 @@ async def twilio_webhook(request: Request, token: str = None):
             <Hangup/>
         </Response>"""
         
-    # Retornamos la respuesta con el Content-Type correcto que Twilio exige (application/xml)
     from fastapi.responses import Response
     return Response(content=twiml_response, media_type="application/xml")
 
