@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Request, HTTPException
-import json
 import os
+import json
 import base64
+import asyncio
 import requests
-from fastapi import FastAPI, Request, HTTPException, Header # <--- Aquí debe estar Header
+import gspread
+from fastapi import FastAPI, Request, HTTPException, Header
+from oauth2client.service_account import ServiceAccountCredentials
 app = FastAPI()
 
 # ----------------------------------------
@@ -18,7 +20,40 @@ def validate_token(token: str):
     if token != SECRET_TOKEN:
         raise HTTPException(status_code=403, detail="Token inválido")
 
+# --- CONFIGURACIÓN DE GOOGLE SHEETS DESDE ENTORNO ---
+# TIP: Para no subir el archivo JSON físico a Render por seguridad, 
+# puedes guardar la ruta en una variable de entorno de Render, o leer el JSON directo de una variable.
+CREDENTIALS_FILE = os.environ.get("GOOGLE_SHEETS_JSON_PATH", r"D:\Python\JS\twilio-guardias-3cb6ae8b259c.json")
+NOMBRE_HOJA_CALCULO = "guardias"
+PESTANA_CONTROL = "control_alertas"
 
+def validate_token(token: str):
+    """Valida el token recibido como query param."""
+    if token is None:
+        raise HTTPException(status_code=400, detail="Token requerido")
+    if token != SECRET_TOKEN:
+        raise HTTPException(status_code=403, detail="Token inválido")
+
+def actualizar_estado_en_sheets(hash_id: str, nuevo_estado: str):
+    """Busca el hash_id en la pestaña control_alertas y actualiza su estado."""
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+        client = gspread.authorize(creds)
+        hoja = client.open(NOMBRE_HOJA_CALCULO).worksheet(PESTANA_CONTROL)
+        
+        # Buscar el hash_id en la columna A
+        celda = hoja.find(hash_id)
+        if celda:
+            # Columna B es el 'estado', está en la columna 2 de la misma fila
+            hoja.update_cell(celda.row, 2, nuevo_estado)
+            print(f"🟩 [Sheets] Alerta {hash_id} actualizada a {nuevo_estado} con éxito.")
+            return True
+        else:
+            print(f"🟨 [Sheets] No se encontró el hash_id {hash_id} en la hoja.")
+    except Exception as e:
+        print(f"❌ [Sheets Error] No se pudo actualizar el estado: {e}")
+    return False
 # ----------------------------------------
 # Ruta raíz
 # ----------------------------------------
@@ -26,6 +61,48 @@ def validate_token(token: str):
 def home():
     return {"status": "online", "message": "Servidor funcionando correctamente"}
 
+# ----------------------------------------
+# WEBHOOK NUEVO: Twilio Confirmación de Llamadas
+# ----------------------------------------
+@app.post("/twilio/webhook")
+async def twilio_webhook(request: Request, token: str = None):
+    # Validamos que la petición traiga el token correcto por seguridad
+    validate_token(token)
+    
+    # Twilio envía los datos como x-www-form-urlencoded
+    form_data = await request.form()
+    
+    # Twilio nos enviará los parámetros GET que le peguemos a la URL (ej: ?hash_id=xxxx)
+    params = request.query_params
+    hash_id = params.get("hash_id")
+    
+    # Capturamos qué dígito presionó el usuario en su teléfono
+    digit_pressed = form_data.get("Digits")
+    
+    print(f"☎️ Webhook Twilio: Hash={hash_id} | Dígito Presionado={digit_pressed}")
+    
+    # Generamos la respuesta XML (TwiML) usando strings limpios para evitar dependencias extra
+    if digit_pressed == "1":
+        if hash_id:
+            # Ejecutamos la actualización de Google Sheets en un hilo para no bloquear el async
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, actualizar_estado_en_sheets, hash_id, "CONFIRMADO")
+            
+        twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Mia" language="es-MX">Alerta confirmada correctamente. Muchas gracias. Adiós.</Say>
+            <Hangup/>
+        </Response>"""
+    else:
+        twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Say voice="Polly.Mia" language="es-MX">Opción no válida o tiempo agotado. Escalando alerta.</Say>
+            <Hangup/>
+        </Response>"""
+        
+    # Retornamos la respuesta con el Content-Type correcto que Twilio exige (application/xml)
+    from fastapi.responses import Response
+    return Response(content=twiml_response, media_type="application/xml")
 
 # ----------------------------------------
 # Webhook Telegram
